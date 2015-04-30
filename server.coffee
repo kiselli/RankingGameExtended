@@ -20,6 +20,12 @@ exports.onInstall = exports.onConfig = (config) !->
 exports.onUpgrade = !->
 	if !Db.shared.get('rounds')
 		newRound()
+	else
+		# Restart ranking games that exhausted all questions
+		maxId = Db.shared.get('rounds', 'maxId')
+		lastRoundTime = Db.shared.get('rounds', maxId, 'time')
+		if lastRoundTime > 0 and lastRoundTime < (0|(Date.now()*.001) - 24*60*60)
+			Timer.set(Math.floor(Math.random()*7200*1000), 'newRound')
 
 	### done
 	if curId = Db.shared.get('rounds', 'maxId')
@@ -103,6 +109,17 @@ exports.reminder = !->
 			for: remind
 			unit: 'remind'
 			text: Util.qToQuestion(questions[qId][0]) + ' ' + tr("30 minutes left to vote!")
+
+exports.client_getVoteCnt = (cb) !->
+	voteCnt = 0
+	maxId = Db.shared.get('rounds', 'maxId')
+
+	for userId in Plugin.userIds()
+		rankings = Db.personal(userId).get 'rankings', maxId
+		if rankings and rankings[1] and rankings[2]
+			voteCnt++
+
+	cb.reply voteCnt
 
 
 close = (roundId = false) !->

@@ -24,12 +24,13 @@ Util = require 'util'
 exports.render = !->
 	rounds = Db.shared.ref 'rounds'
 	if Plugin.users.count().get() < 3
-		Ui.emptyText tr("You need at least 3 members in your happening to play the Ranking Game.")
-		return
-	else if Page.state.get(0) is 'competition'
-		renderCompetition()
+		Ui.emptyText tr("You need at least 3 members in your happening to play the Ranking Game")
 		return
 	else if roundId = Page.state.get(0)
+		if roundId is 'competition' or Page.state.get(1) is 'competition'
+			renderCompetition()
+			return
+
 		round = rounds.ref(roundId)
 
 		if Page.state.get(1) is 'personal'
@@ -44,9 +45,13 @@ exports.render = !->
 		label: tr("Know Thyself Competition")
 		action: !-> Page.nav ['competition']
 
-	Ui.list !->
+	Obs.observe !->
 		maxId = Db.shared.get('rounds', 'maxId')
+		winnerId = Db.shared.get('rounds', maxId, 'results')?
+		if maxId and winnerId # newest round should always be open (otherwise: questions depleted)
+			Ui.emptyText tr("Out of questions, wait for new ones!")
 
+	Ui.list !->
 		rounds.observeEach (round) !->
 			winnerId = round.get('results', 1)
 			ranking = Db.personal.ref('rankings', round.key()) || Obs.create()
@@ -58,15 +63,16 @@ exports.render = !->
 				if winnerId
 					# this round has a winner
 					Ui.avatar Plugin.userAvatar(winnerId), style: marginRight: '10px'
+					resultTime = Db.shared.get('rounds', +round.key()+1, 'time') || 0
+						# note how we're looking at the next round's start-time for this
+					roundColor = if resultTime and Event.isNew(resultTime) then '#5b0' else 'inherit'
 					Dom.div !->
-						Dom.style Flex: 1, color: (if +round.key() is maxId-1 then '#000' else 'inherit')
+						Dom.style Flex: 1, color: roundColor
 						Dom.b Plugin.userName winnerId
 						Dom.div !->
-							resultTime = round.get('time') + Util.getRoundDuration(round.get('time'))
-								# a bit convoluted, but necessary, since we're not storing the round closure time
-								# (this will break when we allow users to trigger a new round manually!)
-							Dom.style color: (if Event.isNew(resultTime) then '#5b0' else '')
 							Dom.text q
+					Dom.onTap !->
+						Page.nav [round.key()]
 				else if hasResults
 					# this round has no results
 					Dom.div !->
@@ -82,32 +88,40 @@ exports.render = !->
 				else
 					# this round is current and has been ranked, or needs to be ranked
 					Dom.div !->
-						Dom.style width: '40px', height: '40px', marginRight: '10px', Box: 'center middle'
-						Icon.render
-							data: (if hasRanked then 'clock2' else 'new')
-							color: (if hasRanked then '#aaa' else null)
-							style: { display: 'block' }
-							size: 34
-
-					Dom.div !->
-						Dom.style Flex: 1
-						Dom.b !->
-							Dom.style color: (if !hasRanked then Colors.highlight else 'inherit')
-							Dom.text Util.qToQuestion(q)
+						Dom.style Box: 'center middle', Flex: true, padding: '8px 8px 8px 8px', margin: '-8px -8px -8px -8px'
 						Dom.div !->
-							Dom.text (if hasRanked then tr("Results & new round") else tr("Voting closes & new round")) + ' '
-							Time.deltaText(Db.shared.get('next'))
+							Dom.style width: '40px', height: '40px', marginRight: '10px', Box: 'center middle'
+							Icon.render
+								data: (if hasRanked then 'clock2' else 'new')
+								color: (if hasRanked then '#aaa' else null)
+								style: { display: 'block' }
+								size: 34
+
+						Dom.div !->
+							Dom.style Flex: 1
+							Dom.b !->
+								Dom.style color: (if !hasRanked then Colors.highlight else 'inherit')
+								Dom.text Util.qToQuestion(q)
+							Dom.div !->
+								Dom.text (if hasRanked then tr("Results & new round") else tr("Voting closes & new round")) + ' '
+								Time.deltaText(Db.shared.get('next'))
+
+						Dom.onTap !->
+							Page.nav [round.key()]
+
+					if Plugin.userId() is Plugin.ownerId() or Plugin.userIsAdmin()
+						Dom.div !->
+							Dom.style borderLeft: '1px solid #ccc', padding: '10px 14px', marginLeft: '8px'
+							Icon.render data: 'fastforward'
+							Dom.onTap !->
+								Server.call 'getVoteCnt', (voteCnt) !->
+									require('modal').confirm tr("Start new ranking round?"), !->
+										Dom.userText tr("The group app owner and/or admin can proceed to the next round.\n\n**The current round has had %1 vote|s.**", voteCnt),
+									, !-> Server.call 'newRound'
+
 
 				Event.renderBubble [round.key()], style: marginLeft: '4px'
-				###
-				if unread = Social.newComments(round.key())
-					Dom.div !->
-						Ui.unread unread, null, {marginLeft: '4px'}
-				###
 
-				if winnerId or !hasResults
-					Dom.onTap !->
-						Page.nav [round.key()]
 		, (round) -> # skip the maxId key
 			if +round.key()
 				-round.key()
@@ -135,7 +149,7 @@ renderCompetition = !->
 				-score.get()
 		Dom.div !->
 			Dom.style padding: '6px', textAlign: 'center', color: '#888', fontSize: '85%'
-			Dom.userText tr("Points can be earned by correctly predicting\nyour own ranking each round.")
+			Dom.userText tr("Points can be earned by correctly predicting\nyour own ranking each round")
 
 
 renderQuestion = (question) !->
@@ -321,16 +335,16 @@ renderRound = (round) !->
 
 renderRoundResults = (round) !->
 	Page.setTitle tr("Ranking results")
-	Event.showStar tr("this round") 
+	Event.showStar tr("this round")
 
 	Dom.style padding: 0 # style the main element
 	Dom.div !->
-		Dom.style backgroundColor: '#f8f8f8', borderBottom: '2px solid #ccc', padding: '8px 0'
+		Dom.style backgroundColor: '#f8f8f8', borderBottom: '2px solid #ccc', padding: '8px 0 0 0'
 
 		renderQuestion round.get('question')
 
 		Dom.div !->
-			Dom.style padding: '5px'
+			Dom.style padding: '5px 5px 0 5px'
 
 			userCnt = Plugin.users.count().get()
 			results = round.get('results')
@@ -374,13 +388,30 @@ renderRoundResults = (round) !->
 								Dom.div Util.selfRankToText(nr)
 
 				myRanking = Db.personal.get 'rankings', round.key()
-				if myRanking and myRanking[1]
+				Ui.item !->
+					Dom.style Box: 'vertical middle', textAlign: 'center', color: '#aaa', fontSize: '85%', borderBottom: 'none', padding: '12px 8px'
 					Dom.div !->
-						Dom.style textAlign: 'center', color: '#aaa', padding: '10px 8px 0 8px'
+						Dom.style color: Colors.highlight, textTransform: 'uppercase', fontWeight: 'bold'
+						Dom.text tr("Know Thyself Competition")
+
+					if myRanking and myRanking[1]
 						scoring = Util.scoring()
 						score = scoring[Math.abs(myRank-myRanking['self'])]
 						Dom.userText tr("You won %1 point|s with your '%2' prediction", score, Util.selfRankToText(myRanking['self']))
-						Dom.text ' ' + tr("(%1 |person|people voted)", round.get('votes'))
+
+					Dom.onTap !-> Page.nav [round.key(), 'competition']
+
+				if myRanking and myRanking[1]
+					Dom.div !->
+						Dom.style
+							padding: '4px'
+							margin: '0 -5px'
+							color: '#999'
+							backgroundColor: '#ddd'
+							textAlign: 'center'
+							fontSize: '85%'
+							textShadow: '0 1px 0 #fff'
+						Dom.text tr("%1 |person|people voted", round.get('votes'))
 
 	Social.renderComments round.key()
 
@@ -394,9 +425,3 @@ exports.renderSettings = !->
 			name: 'adult'
 			value: if Db.shared then Db.shared.func('adult')
 		Form.sep()
-
-		if Db.shared
-			Ui.button !->
-				Dom.style marginTop: '14px'
-				Dom.text tr("Start new round now")
-			, !-> Server.call 'newRound'

@@ -1,5 +1,6 @@
 name: Ranking Game
 description: Who is the funniest? Rank each other on all sorts of topics!
-store: 650
 api: 2
+store: 650
 hint: Rank each other on various topics, twice a day. Where will you be ranked?
+single: true
