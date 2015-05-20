@@ -397,7 +397,7 @@ renderRoundResults = (round) !->
 					if myRanking and myRanking[1]
 						scoring = Util.scoring()
 						score = scoring[Math.abs(myRank-myRanking['self'])]
-						Dom.userText tr("You won %1 point|s with your '%2' prediction", score, Util.selfRankToText(myRanking['self']))
+						Dom.userText tr("You won %1 point|s by predicting to be ranked '%2'", score, Util.selfRankToText(myRanking['self']))
 
 					Dom.onTap !-> Page.nav [round.key(), 'competition']
 

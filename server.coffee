@@ -25,7 +25,8 @@ exports.onUpgrade = !->
 		maxId = Db.shared.get('rounds', 'maxId')
 		lastRoundTime = Db.shared.get('rounds', maxId, 'time')
 		if lastRoundTime > 0 and lastRoundTime < (0|(Date.now()*.001) - 24*60*60)
-			Timer.set(Math.floor(Math.random()*7200*1000), 'newRound')
+			Timer.set(Math.floor(Math.random()*6*3600*1000), 'newRound')
+				# restart somewhere the next 6 hours
 
 	### done
 	if curId = Db.shared.get('rounds', 'maxId')
