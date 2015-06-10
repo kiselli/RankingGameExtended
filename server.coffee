@@ -16,6 +16,9 @@ exports.onInstall = exports.onConfig = (config) !->
 
 	if !Db.shared.get('rounds')
 		newRound()
+	else if maxId = Db.shared.get('rounds', 'maxId')
+		if Db.shared.get('rounds', maxId, 'results')?
+			newRound() # newest round should always be open (otherwise questions depleted)
 
 exports.onUpgrade = !->
 	if !Db.shared.get('rounds')

@@ -30,6 +30,7 @@ exports.getRoundDuration = (currentTime) ->
 	duration = 6*3600 # six hours
 	while 22 <= (hrs = (new Date((currentTime+duration)*1000)).getHours()) or hrs <= 9
 		duration += 6*3600
+		#duration += Math.round(Math.random()*6*3600) # delay randomly
 
 	duration
 
