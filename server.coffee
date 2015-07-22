@@ -28,6 +28,7 @@ exports.onUpgrade = !->
 		maxId = Db.shared.get('rounds', 'maxId')
 		lastRoundTime = Db.shared.get('rounds', maxId, 'time')
 		if lastRoundTime > 0 and lastRoundTime < (0|(Date.now()*.001) - 24*60*60)
+			#newRound()
 			Timer.set(Math.floor(Math.random()*6*3600*1000), 'newRound')
 				# restart somewhere the next 6 hours
 
@@ -49,18 +50,18 @@ exports.onJoin = !->
 	if userCnt >= 3 and !Db.shared.get('rounds', 'maxId')
 		newRound()
 
-exports.client_newRound = exports.newRound = newRound = !->
-	return if userCnt < 3 or +Db.shared.get('next') is -1
-		# -1 is for my plugins and master happenings
+exports.client_closeRound = exports.closeRound = closeRound = !->
 	maxId = Db.shared.get('rounds', 'maxId') || 0
-
-	# close previous round
-	prevHadWinner = false
 	if maxId and !Db.shared.get('rounds', maxId, 'results')
-		prevHadWinner = close maxId
+		calcResults maxId
 
-	log 'maxId, prevHadWinner', maxId, prevHadWinner
+		# give users three questions to pick from for the next round
+		questionIds = selectNewQuestions()
+		if questionIds.length
+			Db.shared.set 'questionIds', questionIds
 
+exports.client_selectNewQuestions = selectNewQuestions = (single) ->
+	maxId = Db.shared.get('rounds', 'maxId') || 0
 	# find questions already used, select new one:
 	used = []
 	for i in [1..maxId]
@@ -73,31 +74,58 @@ exports.client_newRound = exports.newRound = newRound = !->
 		if +nr not in used and (allowAdult or q[1] is false) and q[1] isnt null
 			available.push +nr
 
-	if available.length
+	amount = if single then 1 else 3
+	selected = []
+	while available.length and amount-->0
+		rndPos = Math.floor(Math.random()*available.length)
+		selected.push available[rndPos]
+		available.splice(rndPos, 1)
+
+	if single then selected[0] else	selected
+
+exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
+	return if userCnt < 3 or +Db.shared.get('next') is -1
+		# -1 is for my plugins and master happenings
+	maxId = Db.shared.get('rounds', 'maxId') || 0
+	log 'maxId', maxId
+
+	# only start a new round when a question still needs to be selected (so no round currently active)
+	if pickedQuestionId
+		qIds = Db.shared.get('questionIds')
+		return if !qIds or qIds.indexOf(pickedQuestionId)<0
+		Db.shared.remove 'questionIds'
+
+	# current round results should have been determined, but make sure
+	if maxId and !Db.shared.get('rounds', maxId, 'results')
+		calcResults maxId
+
+	if pickedQuestionId
+		newQuestionId = pickedQuestionId
+	else
+		newQuestionId = selectNewQuestions(true) # select a single question randomly
+
+	if newQuestionId
 		maxId = maxId + 1
 		Db.shared.set 'rounds', 'maxId', maxId
 
-		rndPos = Math.floor(Math.random()*available.length)
-		newQid = available[rndPos]
-
 		time = 0|(Date.now()*.001)
 		Db.shared.set 'rounds', maxId,
-			qid: newQid
-			question: questions[newQid][0]
+			qid: newQuestionId
+			by: Plugin.userId()
+			question: questions[newQuestionId][0]
 			time: time
 
 		roundDuration = Util.getRoundDuration(time)
 
 		Timer.cancel()
 		if roundDuration > 3600
-			Timer.set roundDuration*1000, 'newRound'
-			Timer.set (roundDuration-30*60)*1000, 'reminder'
+			Timer.set roundDuration*1000, 'closeRound'
+			Timer.set (roundDuration-120*60)*1000, 'reminder'
 			Db.shared.set 'next', time+roundDuration
 
-		if !prevHadWinner
+		if !pickedQuestionId
 			Event.create
-				unit: 'round'
-				text: "New ranking round: " + Util.qToQuestion(questions[newQid][0])
+				text: "New ranking round: " + Util.qToQuestion(questions[newQuestionId][0])
 
 exports.reminder = !->
 	roundId = Db.shared.get('rounds', 'maxId')
@@ -109,10 +137,21 @@ exports.reminder = !->
 
 	if remind.length
 		qId = Db.shared.get 'rounds', roundId, 'qid'
+		time = 0|(Date.now()*.001)
+		minsLeft = (Db.shared.get('next') - time) / 60
+		if minsLeft<60
+			leftText = tr("30 minutes")
+		else
+			leftText = tr("2 hours")
+
+		if pickedBy = Db.shared.get('rounds', roundId, 'by')
+			pickedByText = tr("Picked by %1, %2 left to vote!", Plugin.userName(pickedBy), leftText)
+		else
+			pickedByText = tr("%1 left to vote!", leftText)
 		Event.create
 			for: remind
 			unit: 'remind'
-			text: Util.qToQuestion(questions[qId][0]) + ' ' + tr("30 minutes left to vote!")
+			text: Util.qToQuestion(questions[qId][0]) + ' ' + pickedByText
 
 exports.client_getVoteCnt = (cb) !->
 	voteCnt = 0
@@ -126,9 +165,9 @@ exports.client_getVoteCnt = (cb) !->
 	cb.reply voteCnt
 
 
-close = (roundId = false) !->
+calcResults = (roundId = false) !->
 	roundId = roundId || Db.shared.get('rounds', 'maxId')
-	log 'closing round', roundId
+	log 'calculating result for round', roundId
 
 	# calculate results here using personal data (we only take into account current users)
 	scores = {}
@@ -235,8 +274,6 @@ close = (roundId = false) !->
 		Event.create
 			unit: 'round'
 			text: Plugin.userName(resultsObj[1]) + ' ' + questions[qid][0] + '!'
-		return true
-	return false
 
 exports.client_rankSelf = (roundId, self) !->
 	self = +self
