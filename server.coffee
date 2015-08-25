@@ -81,6 +81,9 @@ exports.client_selectNewQuestions = selectNewQuestions = (single) ->
 		selected.push available[rndPos]
 		available.splice(rndPos, 1)
 
+	if selected.length is 0
+		return -1 # no question found
+
 	if single then selected[0] else	selected
 
 exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
@@ -90,7 +93,7 @@ exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
 	log 'maxId', maxId
 
 	# only start a new round when a question still needs to be selected (so no round currently active)
-	if pickedQuestionId
+	if pickedQuestionId?
 		qIds = Db.shared.get('questionIds')
 		return if !qIds or qIds.indexOf(pickedQuestionId)<0
 		Db.shared.remove 'questionIds'
@@ -99,12 +102,12 @@ exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
 	if maxId and !Db.shared.get('rounds', maxId, 'results')
 		calcResults maxId
 
-	if pickedQuestionId
+	if pickedQuestionId?
 		newQuestionId = pickedQuestionId
 	else
 		newQuestionId = selectNewQuestions(true) # select a single question randomly
 
-	if newQuestionId
+	if newQuestionId>=0
 		maxId = maxId + 1
 		Db.shared.set 'rounds', 'maxId', maxId
 
@@ -123,7 +126,7 @@ exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
 			Timer.set (roundDuration-120*60)*1000, 'reminder'
 			Db.shared.set 'next', time+roundDuration
 
-		if !pickedQuestionId
+		if !pickedQuestionId?
 			Event.create
 				text: "New ranking round: " + Util.qToQuestion(questions[newQuestionId][0])
 
@@ -208,7 +211,12 @@ calcResults = (roundId = false) !->
 		userId = +value[0]
 		score = value[1]
 		resultsObj[pos+1] = userId # one-based
-		percsObj[pos+1] = Math.round(score / (voteCnt * 3) * 100)
+
+		vCnt = voteCnt
+		if (rankings = Db.personal(userId).get('rankings', roundId)) and rankings[1] and rankings[2]
+			vCnt-- # this user voted as well, but couldn't have voted for him/herself
+
+		percsObj[pos+1] = Math.round(score / (vCnt * 3) * 100)
 			# this uses the max-score of 3 (see above as well) to calculate
 			# the percentage of max possible points received
 		break if pos is 2 # pos 0, 1, 2
