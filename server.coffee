@@ -212,11 +212,11 @@ calcResults = (roundId = false) !->
 		score = value[1]
 		resultsObj[pos+1] = userId # one-based
 
-		vCnt = voteCnt
-		if (rankings = Db.personal(userId).get('rankings', roundId)) and rankings[1] and rankings[2]
-			vCnt-- # this user voted as well, but couldn't have voted for him/herself
+		#vCnt = voteCnt
+		#if (rankings = Db.personal(userId).get('rankings', roundId)) and rankings[1] and rankings[2]
+		#	vCnt-- # this user voted as well, but couldn't have voted for him/herself
 
-		percsObj[pos+1] = Math.round(score / (vCnt * 3) * 100)
+		percsObj[pos+1] = Math.round(score / (voteCnt * 3) * 100)
 			# this uses the max-score of 3 (see above as well) to calculate
 			# the percentage of max possible points received
 		break if pos is 2 # pos 0, 1, 2
