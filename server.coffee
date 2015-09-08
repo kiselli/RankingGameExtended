@@ -20,15 +20,33 @@ exports.onInstall = exports.onConfig = (config) !->
 		if Db.shared.get('rounds', maxId, 'results')?
 			newRound() # newest round should always be open (otherwise questions depleted)
 
+###
+exports.technicalIssue = !->
+	Event.create
+		text: 'No results problem fixed, our apologies!'
+###
+
 exports.onUpgrade = !->
+	log 'onUpgrade'
 	if !Db.shared.get('rounds')
 		newRound()
 	else
+		# (run-once!) test for borked rounds; when the case, trigger delayed notification
+		###
+		if (maxId = Db.shared.get('rounds', 'maxId'))
+			for id in [maxId..1]
+				if 1441206000 < Db.shared.get('rounds', id, 'time') < 1441375000
+					log 'had a round during issue-window'
+					Timer.set 3*3600*1000, 'technicalIssue'
+					break
+		###
+
 		# Restart ranking games that exhausted all questions
 		maxId = Db.shared.get('rounds', 'maxId')
 		lastRoundTime = Db.shared.get('rounds', maxId, 'time')
-		if lastRoundTime > 0 and lastRoundTime < (0|(Date.now()*.001) - 24*60*60)
+		if !Db.shared.get('questionIds') and lastRoundTime > 0 and lastRoundTime < (0|(Date.now()*.001) - 24*60*60)
 			#newRound()
+			log 'schedule new round restart'
 			Timer.set(Math.floor(Math.random()*6*3600*1000), 'newRound')
 				# restart somewhere the next 6 hours
 
@@ -174,7 +192,9 @@ calcResults = (roundId = false) !->
 
 	# calculate results here using personal data (we only take into account current users)
 	scores = {}
+	hasVoted = {}
 	voteCnt = 0
+	groupCnt = 0
 	for userId in Plugin.userIds()
 		# make sure everyone is represented
 		if !scores[userId]?
@@ -184,9 +204,13 @@ calcResults = (roundId = false) !->
 		if rankings and rankings[1] and rankings[2]
 			scores[rankings[1]] = (scores[rankings[1]]||0) + 3 # this max-score is used below as well!
 			scores[rankings[2]] = (scores[rankings[2]]||0) + 2
-			if rankings[3]
+			if rankings[3] # only two positions to vote for in groups of three members
 				scores[rankings[3]] = (scores[rankings[3]]||0) + 1
 			voteCnt++
+			hasVoted[userId] = true
+		else
+			hasVoted[userId] = false
+		groupCnt++
 
 	Db.shared.set 'rounds', roundId, 'votes', voteCnt
 
@@ -197,8 +221,17 @@ calcResults = (roundId = false) !->
 
 	results = []
 	for userId, score of scores when voteCnt>0
-		results.push([userId, score, score + (Math.random() * 0.5 - 0.25)])
-			# some jitter is added to randomize same-score order
+		# calculate percentage for each, correcting for voter/non-voter differences
+		if score>0
+			correction = ((groupCnt - voteCnt - (if hasVoted[userId] then 0 else 1)) * 6) / (groupCnt - 1)
+			max = (voteCnt - (if hasVoted[userId] then 1 else 0)) * 3 + correction
+			score = score + correction
+			perc = Math.round(score / max  * 100)
+		else
+			perc = 0
+
+		results.push([userId, perc, perc + (Math.random() * 0.5 - 0.25)])
+			# some jitter is added to randomize same-percentages order
 
 	results.sort (a, b) -> b[2] - a[2]
 	resultsObj = { 1: 0, 2: 0, 3: 0 }
@@ -209,16 +242,9 @@ calcResults = (roundId = false) !->
 	# top 3 (also works for top 2)
 	for value, pos in results
 		userId = +value[0]
-		score = value[1]
+		perc = value[1]
 		resultsObj[pos+1] = userId # one-based
-
-		#vCnt = voteCnt
-		#if (rankings = Db.personal(userId).get('rankings', roundId)) and rankings[1] and rankings[2]
-		#	vCnt-- # this user voted as well, but couldn't have voted for him/herself
-
-		percsObj[pos+1] = Math.round(score / (voteCnt * 3) * 100)
-			# this uses the max-score of 3 (see above as well) to calculate
-			# the percentage of max possible points received
+		percsObj[pos+1] = perc
 		break if pos is 2 # pos 0, 1, 2
 
 	Db.shared.set 'rounds', roundId, 'percs', percsObj

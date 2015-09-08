@@ -113,7 +113,10 @@ exports.render = !->
 							Dom.b !->
 								Dom.text Util.qToQuestion(q)
 							Dom.div !->
-								Dom.text tr("No results")
+								if 1441206000 < round.get('time') < 1441378800 # period of two days since 2015-09-02 17:00
+									Dom.text tr("No results (technical problem)")
+								else
+									Dom.text tr("No results")
 					else
 						# this round is current and has been ranked, or needs to be ranked
 						Dom.div !->
