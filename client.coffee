@@ -288,6 +288,8 @@ renderRound = (round) !->
 		current = Db.personal.get('rankings', roundId)
 		ranking.set current if current
 
+		hiddenForm = Form.hidden 'submitTrigger'
+
 		Form.setPageSubmit (values) !->
 			# test if all are set
 			if !ranking.get(1) and !ranking.get(2) and !ranking.get(3) and current?[1]
@@ -308,7 +310,6 @@ renderRound = (round) !->
 			Server.sync 'rankTop', roundId, values, !->
 				Db.personal.merge 'rankings', roundId, values
 			Page.nav [roundId, 'personal']
-		, true
 
 		size = if userCnt > 9 then 58 else 86
 		Plugin.users.observeEach (user) !->
@@ -359,16 +360,16 @@ renderRound = (round) !->
 						# unselect
 						for i in [ranked+1..3]
 							ranking.set i, null
+						hiddenForm.value null unless ranking.get(1)?
 					else
 						# select
 						maxRanked = 0
 						for i in [1..topCnt]
 							maxRanked = i if ranking.get(i)
 						ranking.set (if maxRanked is topCnt then topCnt else maxRanked+1), +user.key()
+						hiddenForm.value true
 		, (user) ->
 			Plugin.userName(user.key()) if +user.key() isnt Plugin.userId()
-					
-
 
 renderRoundResults = (round) !->
 	Page.setTitle tr("Ranking results")
