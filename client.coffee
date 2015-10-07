@@ -360,7 +360,7 @@ renderRound = (round) !->
 						# unselect
 						for i in [ranked+1..3]
 							ranking.set i, null
-						hiddenForm.value null unless ranking.get(1)?
+						hiddenForm.value (if ranked is 0 then true else null) # allow save when all are unselected
 					else
 						# select
 						maxRanked = 0
