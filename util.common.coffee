@@ -1,9 +1,11 @@
 Plugin = require 'plugin'
+Db = require 'db'
 {tr} = require 'i18n'
 
 exports.qToQuestion = (q) ->
-	if typeof q is 'string'
-		tr("Who") + ' ' + q.charAt(0).toLowerCase() + q.slice(1) + '?'
+	return q
+	# if typeof q is 'string'
+	# 	tr("Who") + ' ' + q.charAt(0).toLowerCase() + q.slice(1) + '?'
 
 exports.selfRankToText = (nr) ->
 	if nr is 1
@@ -34,7 +36,24 @@ exports.getRoundDuration = (currentTime) ->
 
 	duration
 
-exports.questions = -> [
+exports.questions = ->
+	if !Db.shared.get
+		return []
+	rv = []
+	Db.shared.iterate 'questions', (q) !->
+		q = q.get()
+		log q
+		rv.push([q.question, q.inappropriate])
+	# questions =  Db.shared.get('questions')
+	# # if questions
+	# # 	return questions.map (question) -> [question.question, question.inappropriate]
+	# # else
+	# if questions
+	# 	question.iterate
+	return rv
+
+
+exports.initalquestions = -> [
 	# WARNING: indices are used, so don't remove items from this array (and add new questions at the end)
 	# Use null as second array entry if you want to stop a question from being selected (or true if 18+)
 	["drinks the most alcohol", true]
@@ -282,6 +301,6 @@ exports.questions = -> [
 	["wishes cell phones were never invented", false]
 	["wishes the internet was never invented", false]
 	["cares most about Valentine's Day", false]
-	
+
 	# WARNING: always add new questions to the end of this array
 ]

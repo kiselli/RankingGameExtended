@@ -5,7 +5,8 @@ Event = require 'event'
 Util = require 'util'
 {tr} = require 'i18n'
 
-questions = Util.questions()
+#questions = Util.questions()
+#log questions
 userCnt = Plugin.userIds().length
 topCnt = Math.min(3, userCnt-1)
 
@@ -88,6 +89,7 @@ exports.client_selectNewQuestions = selectNewQuestions = (single) ->
 
 	allowAdult = Db.shared.get 'adult'
 	available = []
+	questions = Util.questions()
 	for q, nr in questions
 		if +nr not in used and (allowAdult or q[1] is false) and q[1] isnt null
 			available.push +nr
@@ -125,6 +127,7 @@ exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
 	else
 		newQuestionId = selectNewQuestions(true) # select a single question randomly
 
+	questions = Util.questions()
 	if newQuestionId>=0
 		maxId = maxId + 1
 		Db.shared.set 'rounds', 'maxId', maxId
@@ -149,6 +152,7 @@ exports.client_newRound = exports.newRound = newRound = (pickedQuestionId) !->
 				text: "New ranking round: " + Util.qToQuestion(questions[newQuestionId][0])
 
 exports.reminder = !->
+	questions = Util.questions()
 	roundId = Db.shared.get('rounds', 'maxId')
 	remind = []
 	for userId in Plugin.userIds()
@@ -186,7 +190,8 @@ exports.client_getVoteCnt = (cb) !->
 	cb.reply voteCnt
 
 
-calcResults = (roundId = false) !->
+exports.client_calcResults = calcResults = (roundId = false) !->
+	questions = Util.questions()
 	roundId = roundId || Db.shared.get('rounds', 'maxId')
 	log 'calculating result for round', roundId
 
@@ -328,3 +333,13 @@ exports.client_rankTop = (roundId, values) !->
 			2: +values[2]
 			3: +values[3]
 		Db.personal().merge 'rankings', roundId, resObj
+
+exports.client_addQuestion = (question) !->
+	maxId = Db.shared.modify 'maxId', (v) -> (v||0)+1
+	Db.shared.set 'questions', maxId, question
+
+	maxId = Db.shared.get('rounds', 'maxId')
+	if maxId or Db.shared.get('rounds', maxId, 'results')
+		questionIds = selectNewQuestions()
+		if questionIds.length
+			Db.shared.set 'questionIds', questionIds

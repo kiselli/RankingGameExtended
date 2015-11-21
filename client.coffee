@@ -31,6 +31,7 @@ exports.render = !->
 			renderCompetition()
 			return
 
+
 		round = rounds.ref(roundId)
 
 		if Page.state.get(1) is 'personal'
@@ -44,6 +45,11 @@ exports.render = !->
 	Page.setFooter
 		label: tr("Know Thyself Competition")
 		action: !-> Page.nav ['competition']
+		#
+		# label: tr("New Round (Dev)")
+		# action: !-> Server.call "newRound"
+		# label: tr("Finish Round (Dev)")
+		# action: !-> Server.call "calcResults"
 
 	Obs.observe !->
 		maxId = Db.shared.get('rounds', 'maxId')
@@ -53,6 +59,46 @@ exports.render = !->
 			Ui.emptyText tr("Out of questions, wait for new ones!")
 
 		Ui.list !->
+			Ui.item !->
+				Dom.div !->
+					Dom.style width: '40px', height: '40px', marginRight: '10px', Box: 'center middle'
+					Icon.render data: 'fastforward', style: { display: 'block' }, size: 34
+
+				Dom.div !->
+					Dom.style Flex: 1, color: Plugin.colors().highlight, fontWeight: 'bold'
+					Dom.text tr("Create new Question"), !->
+
+				Dom.onTap !->
+					# Page.nav ['competition']
+					Modal.show tr("Create a new Question"), !->
+						saveQuestion = (question) !->
+							Server.call 'newQuestion', question
+
+
+						question = Form.input
+							name: 'question'
+							value: ''
+							text: tr('New Question')
+
+						inappropriate = Form.check
+							name: 'inappropriate'
+							text: '+18?'
+
+						Ui.button "Save", !->
+							# q =
+								# question: question.prop('value')
+								# inappropriate: inappropriate.prop('checked')
+							Server.call 'addQuestion',
+								question: question.prop('value')
+								inappropriate: inappropriate.prop('checked')
+							Modal.remove()
+							Modal.show "Question added!"
+
+					    # Modal.show "You typed: "+question.prop('value')+ " 18?: "+ inappropriate.prop('checked')
+					, null
+					, ['cancel', tr("Cancel")]
+
+
 			if maxId and winnerId and questionIds.length
 				Ui.item !->
 					Dom.div !->
@@ -187,6 +233,11 @@ renderCompetition = !->
 		Dom.div !->
 			Dom.style padding: '6px', textAlign: 'center', color: '#888', fontSize: '85%'
 			Dom.userText tr("Points can be earned by correctly predicting\nyour own ranking each round")
+
+renderAdd = !->
+	Page.setTitle("Add Question")
+
+
 
 
 renderQuestion = (question) !->
